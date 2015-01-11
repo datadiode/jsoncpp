@@ -273,7 +273,7 @@ std::string StyledWriter::write(const Value& root) {
   addChildValues_ = false;
   indentString_.resize(0);
   writeCommentBeforeValue(root);
-  if (!root.isArray() && !root.isObject())
+  if (root.size() == 0)
     writeIndent();
   writeValue(root);
   writeCommentAfterValue(root);
@@ -346,10 +346,11 @@ void StyledWriterMethods::writeArrayValue(const Value& value) {
       for (;;) {
         const Value& childValue = value[index];
         writeCommentBeforeValue(childValue);
-        if (hasChildValue)
-          writeWithIndent(childValues_[index].c_str());
-        else {
+        if (childValue.size() == 0)
           writeIndent();
+        if (hasChildValue)
+          write(childValues_[index].c_str());
+        else {
           writeValue(childValue);
         }
         if (++index == size) {
@@ -475,7 +476,7 @@ void StyledStreamWriter::write(std::ostream& out, const Value& root) {
   addChildValues_ = false;
   indentString_.resize(0);
   writeCommentBeforeValue(root);
-  if (!root.isArray() && !root.isObject())
+  if (root.size() == 0)
     writeIndent();
   writeValue(root);
   writeCommentAfterValue(root);
