@@ -68,6 +68,35 @@ private:
   bool omitEndingLineFeed_;
 };
 
+class JSON_API StyledWriterMethods {
+protected:
+  StyledWriterMethods(std::string::size_type indentSize = 0);
+
+  virtual void write(const char*) = 0;
+
+  void writeValue(const Value& value);
+  void writeArrayValue(const Value& value);
+  bool isMultineArray(const Value& value);
+  void pushValue(const std::string& value);
+  void writeIndent();
+  void writeWithIndent(const char*);
+  void indent();
+  void unindent();
+  void writeCommentBeforeValue(const Value& value);
+  void writeCommentAfterValue(const Value& value);
+  void writeComment(std::string text);
+  static bool hasCommentForValue(const Value& value);
+  static void normalizeEOL(std::string& text);
+
+  typedef std::vector<std::string> ChildValues;
+
+  ChildValues childValues_;
+  std::string indentString_;
+  int rightMargin_;
+  std::string indentation_;
+  bool addChildValues_;
+};
+
 /** \brief Writes a Value in <a HREF="http://www.json.org">JSON</a> format in a
  *human friendly way.
  *
@@ -91,7 +120,8 @@ private:
  *
  * \sa Reader, Value, Value::setComment()
  */
-class JSON_API StyledWriter : public Writer {
+class JSON_API StyledWriter : public Writer,
+                              protected StyledWriterMethods {
 public:
   StyledWriter();
   virtual ~StyledWriter() {}
@@ -103,28 +133,11 @@ public: // overridden from Writer
    */
   virtual std::string write(const Value& root);
 
+protected:
+  virtual void write(const char* text) { document_ += text; }
+
 private:
-  void writeValue(const Value& value);
-  void writeArrayValue(const Value& value);
-  bool isMultineArray(const Value& value);
-  void pushValue(const std::string& value);
-  void writeIndent();
-  void writeWithIndent(const std::string& value);
-  void indent();
-  void unindent();
-  void writeCommentBeforeValue(const Value& root);
-  void writeCommentAfterValueOnSameLine(const Value& root);
-  bool hasCommentForValue(const Value& value);
-  static std::string normalizeEOL(const std::string& text);
-
-  typedef std::vector<std::string> ChildValues;
-
-  ChildValues childValues_;
   std::string document_;
-  std::string indentString_;
-  int rightMargin_;
-  int indentSize_;
-  bool addChildValues_;
 };
 
 /** \brief Writes a Value in <a HREF="http://www.json.org">JSON</a> format in a
@@ -152,7 +165,7 @@ private:
  * \param indentation Each level will be indented by this amount extra.
  * \sa Reader, Value, Value::setComment()
  */
-class JSON_API StyledStreamWriter {
+class JSON_API StyledStreamWriter : protected StyledWriterMethods {
 public:
   StyledStreamWriter(std::string indentation = "\t");
   ~StyledStreamWriter() {}
@@ -166,28 +179,11 @@ public:
    */
   void write(std::ostream& out, const Value& root);
 
+protected:
+  virtual void write(const char* text) { *document_ << text; }
+
 private:
-  void writeValue(const Value& value);
-  void writeArrayValue(const Value& value);
-  bool isMultineArray(const Value& value);
-  void pushValue(const std::string& value);
-  void writeIndent();
-  void writeWithIndent(const std::string& value);
-  void indent();
-  void unindent();
-  void writeCommentBeforeValue(const Value& root);
-  void writeCommentAfterValueOnSameLine(const Value& root);
-  bool hasCommentForValue(const Value& value);
-  static std::string normalizeEOL(const std::string& text);
-
-  typedef std::vector<std::string> ChildValues;
-
-  ChildValues childValues_;
   std::ostream* document_;
-  std::string indentString_;
-  int rightMargin_;
-  std::string indentation_;
-  bool addChildValues_;
 };
 
 #if defined(JSON_HAS_INT64)

@@ -176,7 +176,9 @@ private:
     TokenType type_;
     Location start_;
     Location end_;
-  };
+    int length() const { return static_cast<int>(end_ - start_); }
+    std::string asString() const { return std::string(start_, end_); }
+  } token_;
 
   class ErrorInfo {
   public:
@@ -187,48 +189,26 @@ private:
 
   typedef std::deque<ErrorInfo> Errors;
 
-  bool expectToken(TokenType type, Token& token, const char* message);
-  bool readToken(Token& token);
-  void skipSpaces();
-  bool match(Location pattern, int patternLength);
-  bool readComment();
-  bool readCStyleComment();
-  bool readCppStyleComment();
-  bool readString();
-  void readNumber();
-  bool readValue();
-  bool readObject(Token& token);
-  bool readArray(Token& token);
-  bool decodeNumber(Token& token);
-  bool decodeNumber(Token& token, Value& decoded);
-  bool decodeString(Token& token);
-  bool decodeString(Token& token, std::string& decoded);
-  bool decodeDouble(Token& token);
-  bool decodeDouble(Token& token, Value& decoded);
-  bool decodeUnicodeCodePoint(Token& token,
-                              Location& current,
-                              Location end,
-                              unsigned int& unicode);
-  bool decodeUnicodeEscapeSequence(Token& token,
-                                   Location& current,
-                                   Location end,
-                                   unsigned int& unicode);
-  bool addError(const std::string& message, Token& token, Location extra = 0);
-  bool recoverFromError(TokenType skipUntilToken);
-  bool addErrorAndRecover(const std::string& message,
-                          Token& token,
-                          TokenType skipUntilToken);
-  void skipUntilSpace();
-  Value& currentValue();
+  void readToken();
+  TokenType match(const Char* pattern, TokenType type);
+  TokenType readCStyleComment();
+  TokenType readCppStyleComment();
+  TokenType readString();
+  TokenType readNumber();
+  bool readValue(Value&);
+  bool readObject(Value&);
+  bool readArray(Value&);
+  bool decodeNumber(Value&);
+  bool decodeDouble(Value&);
+  bool decodeString(Value&);
+  bool decodeString(std::string&);
+  unsigned decodeUnicodeEscapeSequence(Location& current, Location end);
+  void addError(const char* message, Location extra = 0);
   Char getNextChar();
-  void
-  getLocationLineAndColumn(Location location, int& line, int& column) const;
+  void getLocationLineAndColumn(Location, int& line, int& column) const;
   std::string getLocationLineAndColumn(Location location) const;
-  void addComment(Location begin, Location end, CommentPlacement placement);
-  void skipCommentTokens(Token& token);
+  bool skipCommentTokens(std::string& queuedComments, Value* lastValue = 0);
 
-  typedef std::stack<Value*> Nodes;
-  Nodes nodes_;
   Errors errors_;
   std::string document_;
   Location begin_;
