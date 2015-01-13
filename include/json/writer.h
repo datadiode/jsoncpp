@@ -79,7 +79,6 @@ protected:
   bool isMultineArray(const Value& value);
   void pushValue(const std::string& value);
   void writeIndent();
-  void writeWithIndent(const char*);
   void indent();
   void unindent();
   void writeCommentBeforeValue(const Value& value);

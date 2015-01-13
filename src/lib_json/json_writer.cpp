@@ -252,11 +252,6 @@ void StyledWriterMethods::writeIndent() {
     write(indentString_.c_str());
 }
 
-void StyledWriterMethods::writeWithIndent(const char* text) {
-  writeIndent();
-  write(text);
-}
-
 void StyledWriterMethods::indent() { indentString_ += indentation_; }
 
 void StyledWriterMethods::unindent() {
@@ -273,8 +268,7 @@ std::string StyledWriter::write(const Value& root) {
   addChildValues_ = false;
   indentString_.resize(0);
   writeCommentBeforeValue(root);
-  if (root.size() == 0)
-    writeIndent();
+  writeIndent();
   writeValue(root);
   writeCommentAfterValue(root);
   return document_;
@@ -308,15 +302,17 @@ void StyledWriterMethods::writeValue(const Value& value) {
     if (members.empty())
       pushValue("{}");
     else {
-      writeWithIndent("{");
+      write("{");
       indent();
       Value::Members::iterator it = members.begin();
       for (;;) {
         const std::string& name = *it;
         const Value& childValue = value[name];
         writeCommentBeforeValue(childValue);
-        writeWithIndent(valueToQuotedString(name.c_str()).c_str());
+        writeIndent();
+        write(valueToQuotedString(name.c_str()).c_str());
         write(" : ");
+        // TODO: writeIndent() here for multiline arrays & objects?
         writeValue(childValue);
         if (++it == members.end()) {
           writeCommentAfterValue(childValue);
@@ -326,7 +322,8 @@ void StyledWriterMethods::writeValue(const Value& value) {
         writeCommentAfterValue(childValue);
       }
       unindent();
-      writeWithIndent("}");
+      writeIndent();
+      write("}");
     }
   } break;
   }
@@ -339,15 +336,14 @@ void StyledWriterMethods::writeArrayValue(const Value& value) {
   else {
     bool isArrayMultiLine = isMultineArray(value);
     if (isArrayMultiLine) {
-      writeWithIndent("[");
+      write("[");
       indent();
       bool hasChildValue = !childValues_.empty();
       unsigned index = 0;
       for (;;) {
         const Value& childValue = value[index];
         writeCommentBeforeValue(childValue);
-        if (childValue.size() == 0)
-          writeIndent();
+        writeIndent();
         if (hasChildValue)
           write(childValues_[index].c_str());
         else {
@@ -361,7 +357,8 @@ void StyledWriterMethods::writeArrayValue(const Value& value) {
         writeCommentAfterValue(childValue);
       }
       unindent();
-      writeWithIndent("]");
+      writeIndent();
+      write("]");
     } else // output on a single line
     {
       assert(childValues_.size() == size);
@@ -437,7 +434,8 @@ void StyledWriterMethods::writeComment(std::string text) {
         } while (c != '\0' && c != '\r' && c != '\n');
       } while (block && c != '\0' && (q[-1] != '/' || q[-2] != '*'));
     }
-    writeWithIndent(std::string(p, q).c_str());
+    writeIndent();
+    write(std::string(p, q).c_str());
   }
 }
 
@@ -476,8 +474,7 @@ void StyledStreamWriter::write(std::ostream& out, const Value& root) {
   addChildValues_ = false;
   indentString_.resize(0);
   writeCommentBeforeValue(root);
-  if (root.size() == 0)
-    writeIndent();
+  writeIndent();
   writeValue(root);
   writeCommentAfterValue(root);
   document_ = NULL; // Forget the stream, for safety.
