@@ -142,12 +142,12 @@ Value::CommentInfo::~CommentInfo() {
 }
 
 void Value::CommentInfo::setComment(const char* text) {
-  if (comment_)
-    releaseStringValue(comment_);
   JSON_ASSERT(text != 0);
   JSON_ASSERT_MESSAGE(
       text[0] == '\0' || text[0] == '/',
       "in Json::Value::setComment(): Comments must start with /");
+  if (comment_)
+    releaseStringValue(comment_);
   // It seems that /**/ style comments are acceptable as well.
   comment_ = duplicateStringValue(text);
 }
