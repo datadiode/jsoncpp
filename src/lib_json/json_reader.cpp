@@ -26,7 +26,7 @@ namespace Json {
 
 Features::Features()
     : allowComments_(true), strictRoot_(false),
-      allowDroppedNullPlaceholders_(false), allowNumericKeys_(false) {}
+      allowDroppedNullPlaceholders_(true), allowNumericKeys_(true) {}
 
 Features Features::all() { return Features(); }
 
@@ -155,19 +155,6 @@ bool Reader::readValue(Value& currentValue) {
     currentValue.setOffsetStart(token_.start_ - begin_);
     currentValue.setOffsetLimit(token_.end_ - begin_);
     break;
-  case tokenArraySeparator:
-  case tokenObjectEnd:
-  case tokenArrayEnd:
-    if (features_.allowDroppedNullPlaceholders_) {
-      // "Un-read" the current token and mark the current value as a null
-      // token.
-      current_--;
-      currentValue = Value();
-      currentValue.setOffsetStart(current_ - begin_ - 1);
-      currentValue.setOffsetLimit(current_ - begin_);
-      break;
-    }
-  // Else, fall through...
   default:
     currentValue.setOffsetStart(token_.start_ - begin_);
     currentValue.setOffsetLimit(token_.end_ - begin_);
@@ -348,8 +335,9 @@ bool Reader::readObject(Value& currentValue) {
   bool comment;
   do {
     comment = skipCommentTokens(queuedComments, lastValue);
-    if (lastValue == 0 && token_.type_ == tokenObjectEnd)
-      break; // empty object
+    if (token_.type_ == tokenObjectEnd)
+      if (lastValue == 0 || features_.allowDroppedNullPlaceholders_)
+        break; // empty object or trailing comma
     if (token_.type_ == tokenString) {
       if (!decodeString(name))
         return false;
@@ -375,11 +363,18 @@ bool Reader::readObject(Value& currentValue) {
       value.setComment(queuedComments.c_str(), commentBefore);
       queuedComments.resize(0);
     }
+    lastValue = &value;
+    // if a tokenArraySeparator follows, assume a dropped null placeholder
+    if (token_.type_ == tokenArraySeparator) {
+      value = Value();
+      value.setOffsetStart(token_.start_ - begin_);
+      value.setOffsetLimit(token_.end_ - begin_);
+      continue; 
+    }
     if (!readValue(value)) {
       // error already set
       return false;
     }
-    lastValue = &value;
     comment = skipCommentTokens(queuedComments, lastValue);
   } while (token_.type_ == tokenArraySeparator);
   if (token_.type_ != tokenObjectEnd) {
@@ -404,18 +399,26 @@ bool Reader::readArray(Value& currentValue) {
   bool comment;
   do {
     comment = skipCommentTokens(queuedComments, lastValue);
-    if (lastValue == 0 && token_.type_ == tokenArrayEnd)
-      break; // empty array
+    if (token_.type_ == tokenArrayEnd)
+      if (lastValue == 0 || features_.allowDroppedNullPlaceholders_)
+        break; // empty array or trailing comma
     Value& value = currentValue[index++];
     if (!queuedComments.empty()) {
       value.setComment(queuedComments.c_str(), commentBefore);
       queuedComments.resize(0);
     }
+    lastValue = &value;
+    // if a tokenArraySeparator follows, assume a dropped null placeholder
+    if (token_.type_ == tokenArraySeparator) {
+      value = Value();
+      value.setOffsetStart(token_.start_ - begin_);
+      value.setOffsetLimit(token_.end_ - begin_);
+      continue; 
+    }
     if (!readValue(value)) {
       // error already set
       return false;
     }
-    lastValue = &value;
     comment = skipCommentTokens(queuedComments, lastValue);
   } while (token_.type_ == tokenArraySeparator);
   if (token_.type_ != tokenArrayEnd) {
