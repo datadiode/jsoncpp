@@ -271,6 +271,7 @@ std::string StyledWriter::write(const Value& root) {
   writeIndent();
   writeValue(root);
   writeCommentAfterValue(root);
+  writeIndent();
   return document_;
 }
 
@@ -477,6 +478,7 @@ void StyledStreamWriter::write(std::ostream& out, const Value& root) {
   writeIndent();
   writeValue(root);
   writeCommentAfterValue(root);
+  writeIndent();
   document_ = NULL; // Forget the stream, for safety.
 }
 

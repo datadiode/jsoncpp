@@ -165,7 +165,7 @@ static int rewriteValueTree(const std::string& rewritePath,
     printf("Failed to create rewrite file: %s\n", rewritePath.c_str());
     return 2;
   }
-  fprintf(fout, "%s\n", rewrite.c_str());
+  fputs(rewrite.c_str(), fout);
   fclose(fout);
   return 0;
 }
