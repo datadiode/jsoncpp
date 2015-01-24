@@ -17,8 +17,8 @@
 #define kint64min Json::Value::minInt64
 #define kuint64max Json::Value::maxUInt64
 
-static const double kdint64max = double(kint64max);
-static const float kfint64max = float(kint64max);
+//static const double kdint64max = double(kint64max);
+//static const float kfint64max = float(kint64max);
 static const float kfint32max = float(kint32max);
 static const float kfuint32max = float(kuint32max);
 
@@ -198,6 +198,18 @@ JSONTEST_FIXTURE(ValueTest, objects) {
 
   object1_["some other id"] = "foo";
   JSONTEST_ASSERT_EQUAL(Json::Value("foo"), object1_["some other id"]);
+  JSONTEST_ASSERT_EQUAL(Json::Value("foo"), object1_["some other id"]);
+
+  // Remove.
+  Json::Value got;
+  bool did;
+  did = object1_.removeMember("some other id", &got);
+  JSONTEST_ASSERT_EQUAL(Json::Value("foo"), got);
+  JSONTEST_ASSERT_EQUAL(true, did);
+  got = Json::Value("bar");
+  did = object1_.removeMember("some other id", &got);
+  JSONTEST_ASSERT_EQUAL(Json::Value("bar"), got);
+  JSONTEST_ASSERT_EQUAL(false, did);
 }
 
 JSONTEST_FIXTURE(ValueTest, arrays) {
@@ -240,6 +252,10 @@ JSONTEST_FIXTURE(ValueTest, arrays) {
   array1_[2] = Json::Value(17);
   JSONTEST_ASSERT_EQUAL(Json::Value(), array1_[1]);
   JSONTEST_ASSERT_EQUAL(Json::Value(17), array1_[2]);
+  Json::Value got;
+  JSONTEST_ASSERT_EQUAL(true, array1_.removeIndex(2, &got));
+  JSONTEST_ASSERT_EQUAL(Json::Value(17), got);
+  JSONTEST_ASSERT_EQUAL(false, array1_.removeIndex(2, &got)); // gone now
 }
 
 JSONTEST_FIXTURE(ValueTest, null) {

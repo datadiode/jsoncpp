@@ -235,25 +235,26 @@ Json::Value obj_value(Json::objectValue); // {}
   Value(const CppTL::ConstString& value);
 #endif
   Value(bool value);
+  /// Deep copy.
   Value(const Value& other);
   ~Value();
 
+  // Deep copy, then swap(other).
   Value& operator=(Value other);
-  /// Swap values.
-  /// \note Currently, comments are intentionally not swapped, for
-  /// both logic and efficiency.
+  /// Swap everything.
   void swap(Value& other);
+  /// Swap values but leave comments and source offsets in place.
+  void swapPayload(Value& other);
 
   ValueType type() const;
 
+  /// Compare payload only, not comments etc.
   bool operator<(const Value& other) const;
   bool operator<=(const Value& other) const;
   bool operator>=(const Value& other) const;
   bool operator>(const Value& other) const;
-
   bool operator==(const Value& other) const;
   bool operator!=(const Value& other) const;
-
   int compare(const Value& other) const;
 
   const char* asCString() const;
@@ -391,9 +392,24 @@ Json::Value obj_value(Json::objectValue); // {}
   /// \return the removed Value, or null.
   /// \pre type() is objectValue or nullValue
   /// \post type() is unchanged
+  /// \deprecated
   Value removeMember(const char* key);
   /// Same as removeMember(const char*)
+  /// \deprecated
   Value removeMember(const std::string& key);
+  /** \brief Remove the named map member.
+
+      Update 'removed' iff removed.
+      \return true iff removed (no exceptions)
+  */
+  bool removeMember(const char* key, Value* removed);
+  /** \brief Remove the indexed array element.
+
+      O(n) expensive operations.
+      Update 'removed' iff removed.
+      \return true iff removed (no exceptions)
+  */
+  bool removeIndex(ArrayIndex i, Value* removed);
 
   /// Return true if the object has a member named key.
   bool isMember(const char* key) const;
@@ -489,7 +505,7 @@ private:
 #endif
   } value_;
   ValueType type_ : 8;
-  int allocated_ : 1; // Notes: if declared as bool, bitfield is useless.
+  unsigned allocated_ : 1; // Notes: if declared as bool, bitfield is useless.
 #ifdef JSON_VALUE_USE_INTERNAL_MAP
   unsigned int itemIsUsed_ : 1; // used by the ValueInternalMap container.
   int memberNameIsStatic_ : 1;  // used by the ValueInternalMap container.
@@ -1080,6 +1096,14 @@ public:
 };
 
 } // namespace Json
+
+
+namespace std {
+/// Specialize std::swap() for Json::Value.
+template<>
+inline void swap(Json::Value& a, Json::Value& b) { a.swap(b); }
+}
+
 
 #if defined(JSONCPP_DISABLE_DLL_INTERFACE_WARNING)
 #pragma warning(pop)

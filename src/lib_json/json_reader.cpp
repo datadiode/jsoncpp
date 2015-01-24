@@ -49,6 +49,22 @@ static bool containsNewLine(Reader::Location begin, Reader::Location end) {
   return false;
 }
 
+static std::string::iterator normalizeEOL(std::string::iterator begin,
+                                          std::string::iterator end) {
+  std::string::iterator normalized = begin;
+  while (begin != end) {
+    char c = *begin++;
+    if (c == '\r') // mac or dos EOL
+    {
+      if (begin != end && *begin == '\n') // convert dos EOL
+        ++begin;
+      *normalized++ = '\n';
+    } else // handle unix EOL & other char
+      *normalized++ = c;
+  }
+  return normalized;
+}
+
 // Class Reader
 // //////////////////////////////////////////////////////////////////
 
@@ -102,37 +118,31 @@ bool Reader::parse(const char* beginDoc,
     root.setComment(queuedComments.c_str(), commentBefore);
     queuedComments.resize(0);
   }
+  if (features_.strictRoot_) {
+    if (token_.type_ != tokenArrayBegin && token_.type_ != tokenObjectBegin) {
+      addError(
+          "A valid JSON document must be either an array or an object value.");
+      return false;
+    }
+  }
   bool successful = readValue(root);
   skipCommentTokens(queuedComments, &root);
   if (!queuedComments.empty()) {
     root.setComment(queuedComments.c_str(), commentAfter);
     queuedComments.resize(0);
   }
-  if (features_.strictRoot_) {
-    if (!root.isArray() && !root.isObject()) {
-      // Set error location to start of doc, ideally should be first token found
-      // in doc
-      token_.type_ = tokenError;
-      token_.start_ = beginDoc;
-      token_.end_ = endDoc;
-      addError(
-          "A valid JSON document must be either an array or an object value.");
-      return false;
-    }
-  }
   return successful;
 }
 
 bool Reader::readValue(Value& currentValue) {
   bool successful = true;
+  currentValue.setOffsetStart(token_.start_ - begin_);
   switch (token_.type_) {
   case tokenObjectBegin:
     successful = readObject(currentValue);
-    currentValue.setOffsetLimit(current_ - begin_);
     break;
   case tokenArrayBegin:
     successful = readArray(currentValue);
-    currentValue.setOffsetLimit(current_ - begin_);
     break;
   case tokenNumber:
     successful = decodeNumber(currentValue);
@@ -141,40 +151,39 @@ bool Reader::readValue(Value& currentValue) {
     successful = decodeString(currentValue);
     break;
   case tokenTrue:
-    currentValue = true;
-    currentValue.setOffsetStart(token_.start_ - begin_);
-    currentValue.setOffsetLimit(token_.end_ - begin_);
+    Value(true).swapPayload(currentValue);
     break;
   case tokenFalse:
-    currentValue = false;
-    currentValue.setOffsetStart(token_.start_ - begin_);
-    currentValue.setOffsetLimit(token_.end_ - begin_);
+    Value(false).swapPayload(currentValue);
     break;
   case tokenNull:
-    currentValue = Value();
-    currentValue.setOffsetStart(token_.start_ - begin_);
-    currentValue.setOffsetLimit(token_.end_ - begin_);
+    Value().swapPayload(currentValue);
     break;
   default:
-    currentValue.setOffsetStart(token_.start_ - begin_);
-    currentValue.setOffsetLimit(token_.end_ - begin_);
+    successful = false;
     addError("Syntax error: value, object or array expected.");
-    return false;
+    break;
   }
+  currentValue.setOffsetLimit(token_.end_ - begin_);
   return successful;
+}
+
+void Reader::nullifyValue(Value& currentValue) {
+  Value().swapPayload(currentValue);
+  currentValue.setOffsetStart(token_.start_ - begin_);
+  currentValue.setOffsetLimit(token_.end_ - begin_);
 }
 
 bool Reader::skipCommentTokens(std::string& queuedComments, Value* lastValue) {
   bool found = false;
-  queuedComments.resize(0);
-  const char *origin = current_;
   do {
-    readToken();
+    if (readToken())
+      lastValue = 0;
     if (token_.type_ != tokenComment)
       break;
     found = true;
     if (collectComments_) {
-      if (lastValue && !containsNewLine(origin, token_.end_)) {
+      if (lastValue && !containsNewLine(token_.start_, token_.end_)) {
         std::string inlineComments = lastValue->getComment(commentAfterOnSameLine);
         if (!inlineComments.empty())
           inlineComments.push_back(' ');
@@ -183,17 +192,24 @@ bool Reader::skipCommentTokens(std::string& queuedComments, Value* lastValue) {
       } else {
         if (!queuedComments.empty())
           queuedComments.push_back('\n');
+        const std::string::size_type offset = queuedComments.length();
         queuedComments.append(token_.start_, token_.end_);
+        const std::string::iterator begin = queuedComments.begin();
+        const std::string::iterator end = queuedComments.end();
+        queuedComments.erase(normalizeEOL(begin + offset, end), end);
       }
     }
   } while (features_.allowComments_);
   return found;
 }
 
-void Reader::readToken() {
+bool Reader::readToken() {
+  bool linebreak = false;
   while (current_ != end_) {
     Char c = *current_;
-    if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+    if (c == '\r' || c == '\n')
+      linebreak = true;
+	else if (c != ' ' && c != '\t')
       break;
     ++current_;
   }
@@ -260,6 +276,7 @@ void Reader::readToken() {
     break;
   }
   token_.end_ = current_;
+  return linebreak;
 }
 
 Reader::TokenType Reader::match(const Char *pattern, TokenType type) {
@@ -328,12 +345,17 @@ Reader::TokenType Reader::readString() {
 
 bool Reader::readObject(Value& currentValue) {
   std::string name;
-  currentValue = Value(objectValue);
+  Value(objectValue).swapPayload(currentValue);
   std::string queuedComments, misplacedComments;
-  currentValue.setOffsetStart(token_.start_ - begin_);
   Value* lastValue = 0;
   bool comment;
   do {
+    // deal with comment before comma but not on same line as lastValue
+    if (lastValue && !queuedComments.empty()) {
+      lastValue->setComment(queuedComments.c_str(), commentAfter);
+      queuedComments.resize(0);
+      lastValue = 0; // don't put comment after comma on same line as lastValue
+    }
     comment = skipCommentTokens(queuedComments, lastValue);
     if (token_.type_ == tokenObjectEnd)
       if (lastValue == 0 || features_.allowDroppedNullPlaceholders_)
@@ -350,14 +372,12 @@ bool Reader::readObject(Value& currentValue) {
       addError("Missing '}' or object member name");
       return false;
     }
-    if (skipCommentTokens(misplacedComments))
-      addError("Misplaced comment");
+    skipCommentTokens(queuedComments);
     if (token_.type_ != tokenMemberSeparator) {
       addError("Missing ':' after object member name");
       return false;
     }
-    if (skipCommentTokens(misplacedComments))
-      addError("Misplaced comment");
+    skipCommentTokens(queuedComments);
     Value& value = currentValue[name];
     if (!queuedComments.empty()) {
       value.setComment(queuedComments.c_str(), commentBefore);
@@ -366,9 +386,7 @@ bool Reader::readObject(Value& currentValue) {
     lastValue = &value;
     // if a tokenArraySeparator follows, assume a dropped null placeholder
     if (token_.type_ == tokenArraySeparator) {
-      value = Value();
-      value.setOffsetStart(token_.start_ - begin_);
-      value.setOffsetLimit(token_.end_ - begin_);
+      nullifyValue(value);
       continue; 
     }
     if (!readValue(value)) {
@@ -382,22 +400,32 @@ bool Reader::readObject(Value& currentValue) {
     return false;
   }
   if (comment) {
-    if (lastValue == 0)
-      addError("Misplaced comment");
-    else if (!queuedComments.empty())
+    if (lastValue == 0) {
+      std::string comment = currentValue.getComment(commentBefore);
+      if (!comment.empty())
+        comment.push_back('\n');
+      comment.append(queuedComments);
+      currentValue.setComment(comment.c_str(), commentBefore);
+    } else if (!queuedComments.empty()) {
       lastValue->setComment(queuedComments.c_str(), commentAfter);
+    }
   }
   return true;
 }
 
 bool Reader::readArray(Value& currentValue) {
-  currentValue = Value(arrayValue);
-  currentValue.setOffsetStart(token_.start_ - begin_);
+  Value(arrayValue).swapPayload(currentValue);
   int index = 0;
   std::string queuedComments;
   Value* lastValue = 0;
   bool comment;
   do {
+    // deal with comment before comma but not on same line as lastValue
+    if (lastValue && !queuedComments.empty()) {
+      lastValue->setComment(queuedComments.c_str(), commentAfter);
+      queuedComments.resize(0);
+      lastValue = 0; // don't put comment after comma on same line as lastValue
+    }
     comment = skipCommentTokens(queuedComments, lastValue);
     if (token_.type_ == tokenArrayEnd)
       if (lastValue == 0 || features_.allowDroppedNullPlaceholders_)
@@ -410,9 +438,7 @@ bool Reader::readArray(Value& currentValue) {
     lastValue = &value;
     // if a tokenArraySeparator follows, assume a dropped null placeholder
     if (token_.type_ == tokenArraySeparator) {
-      value = Value();
-      value.setOffsetStart(token_.start_ - begin_);
-      value.setOffsetLimit(token_.end_ - begin_);
+      nullifyValue(value);
       continue; 
     }
     if (!readValue(value)) {
@@ -426,10 +452,15 @@ bool Reader::readArray(Value& currentValue) {
     return false;
   }
   if (comment) {
-    if (lastValue == 0)
-      addError("Misplaced comment");
-    else if (!queuedComments.empty())
+    if (lastValue == 0) {
+      std::string comment = currentValue.getComment(commentBefore);
+      if (!comment.empty())
+        comment.push_back('\n');
+      comment.append(queuedComments);
+      currentValue.setComment(comment.c_str(), commentBefore);
+    } else if (!queuedComments.empty()) {
       lastValue->setComment(queuedComments.c_str(), commentAfter);
+    }
   }
   return true;
 }
@@ -461,9 +492,9 @@ bool Reader::decodeNumber(Value& currentValue) {
     }
   }
   if (isSigned && (isNegative || Value::LargestInt(value) >= 0))
-    currentValue = isNegative ? -Value::LargestInt(value) : Value::LargestInt(value);
+    Value(isNegative ? -Value::LargestInt(value) : Value::LargestInt(value)).swapPayload(currentValue);
   else if (isUnsigned && !isNegative)
-    currentValue = value;
+    Value(value).swapPayload(currentValue);
   else {
     double value = 0;
     const int bufferSize = 64;
@@ -487,10 +518,8 @@ bool Reader::decodeNumber(Value& currentValue) {
       addError(("'" + token_.asString() + "' is not a number.").c_str());
       return false;
     }
-    currentValue = value;
+    Value(value).swapPayload(currentValue);
   }
-  currentValue.setOffsetStart(token_.start_ - begin_);
-  currentValue.setOffsetLimit(token_.end_ - begin_);
   return true;
 }
 
@@ -498,9 +527,7 @@ bool Reader::decodeString(Value& currentValue) {
   std::string decoded;
   if (!decodeString(decoded))
     return false;
-  currentValue = decoded;
-  currentValue.setOffsetStart(token_.start_ - begin_);
-  currentValue.setOffsetLimit(token_.end_ - begin_);
+  Value(decoded).swapPayload(currentValue);
   return true;
 }
 

@@ -1,11 +1,31 @@
 from __future__ import print_function
+from __future__ import unicode_literals
+from io import open
 from glob import glob
 import sys
 import os
+import os.path
 import optparse
 
 VALGRIND_CMD = 'valgrind --tool=memcheck --leak-check=yes --undef-value-errors=yes '
 
+def getStatusOutput(cmd):
+    """
+    Return int, unicode (for both Python 2 and 3).
+    Note: os.popen().close() would return None for 0.
+    """
+    print(cmd, file=sys.stderr)
+    pipe = os.popen(cmd)
+    process_output = pipe.read()
+    try:
+        # We have been using os.popen(). When we read() the result
+        # we get 'str' (bytes) in py2, and 'str' (unicode) in py3.
+        # Ugh! There must be a better way to handle this.
+        process_output = process_output.decode('utf-8')
+    except AttributeError:
+        pass  # python3
+    status = pipe.close()
+    return status, process_output
 def compareOutputs( expected, actual, message ):
     expected = expected.strip().replace('\r','').split('\n')
     actual = actual.strip().replace('\r','').split('\n')
@@ -38,7 +58,8 @@ def safeReadFile( path ):
         return '<File "%s" is missing: %s>' % (path,e)
 
 def runAllTests( jsontest_executable_path, input_dir = None,
-                 use_valgrind=False, with_json_checker=False ):
+                 use_valgrind=False, with_json_checker=False,
+                 writerClass='StyledWriter'):
     if not input_dir:
         input_dir = os.path.join( os.getcwd(), 'data' )
     tests = glob( os.path.join( input_dir, '*.json' ) )
@@ -53,21 +74,21 @@ def runAllTests( jsontest_executable_path, input_dir = None,
         is_json_checker_test = (input_path in test_jsonchecker) or expect_failure
         print('TESTING:', input_path, end=' ')
         options = is_json_checker_test and '--json-checker' or ''
-        pipe = os.popen( '%s%s %s "%s"' % (
+        options += ' --json-writer %s'%writerClass
+        cmd = '%s%s %s "%s"' % (
             valgrind_path, jsontest_executable_path, options,
-            input_path))
-        process_output = pipe.read()
-        status = pipe.close()
+            input_path)
+        status, process_output = getStatusOutput(cmd)
         if is_json_checker_test:
             if expect_failure:
-                if status is None:
+                if not status:
                     print('FAILED')
                     failed_tests.append( (input_path, 'Parsing should have failed:\n%s' %
                                           safeReadFile(input_path)) )
                 else:
                     print('OK')
             else:
-                if status is not None:
+                if status:
                     print('FAILED')
                     failed_tests.append( (input_path, 'Parsing failed:\n' + process_output) )
                 else:
@@ -127,7 +148,15 @@ def main():
     else:
         input_path = None
     status = runAllTests( jsontest_executable_path, input_path,
-                          use_valgrind=options.valgrind, with_json_checker=options.with_json_checker )
+                          use_valgrind=options.valgrind,
+                          with_json_checker=options.with_json_checker,
+                          writerClass='StyledWriter')
+    if status:
+        sys.exit( status )
+    status = runAllTests( jsontest_executable_path, input_path,
+                          use_valgrind=options.valgrind,
+                          with_json_checker=options.with_json_checker,
+                          writerClass='StyledStreamWriter')
     sys.exit( status )
 
 if __name__ == '__main__':

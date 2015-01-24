@@ -85,7 +85,6 @@ protected:
   void writeCommentAfterValue(const Value& value);
   void writeComment(std::string text);
   static bool hasCommentForValue(const Value& value);
-  static void normalizeEOL(std::string& text);
 
   typedef std::vector<std::string> ChildValues;
 

@@ -189,13 +189,14 @@ private:
 
   typedef std::deque<ErrorInfo> Errors;
 
-  void readToken();
+  bool readToken();
   TokenType match(const Char* pattern, TokenType type);
   TokenType readCStyleComment();
   TokenType readCppStyleComment();
   TokenType readString();
   TokenType readNumber();
   bool readValue(Value&);
+  void nullifyValue(Value&);
   bool readObject(Value&);
   bool readArray(Value&);
   bool decodeNumber(Value&);

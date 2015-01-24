@@ -142,12 +142,14 @@ Value::CommentInfo::~CommentInfo() {
 }
 
 void Value::CommentInfo::setComment(const char* text) {
+  if (comment_) {
+    releaseStringValue(comment_);
+    comment_ = 0;
+  }
   JSON_ASSERT(text != 0);
   JSON_ASSERT_MESSAGE(
       text[0] == '\0' || text[0] == '/',
       "in Json::Value::setComment(): Comments must start with /");
-  if (comment_)
-    releaseStringValue(comment_);
   // It seems that /**/ style comments are acceptable as well.
   comment_ = duplicateStringValue(text);
 }
@@ -441,7 +443,7 @@ Value& Value::operator=(Value other) {
   return *this;
 }
 
-void Value::swap(Value& other) {
+void Value::swapPayload(Value& other) {
   ValueType temp = type_;
   type_ = other.type_;
   other.type_ = temp;
@@ -449,6 +451,11 @@ void Value::swap(Value& other) {
   int temp2 = allocated_;
   allocated_ = other.allocated_;
   other.allocated_ = temp2;
+}
+
+void Value::swap(Value& other) {
+  swapPayload(other);
+  std::swap(comments_, other.comments_);
   std::swap(start_, other.start_);
   std::swap(limit_, other.limit_);
 }
@@ -1015,33 +1022,72 @@ Value Value::get(const std::string& key, const Value& defaultValue) const {
   return get(key.c_str(), defaultValue);
 }
 
+
+bool Value::removeMember(const char* key, Value* removed) {
+  if (type_ != objectValue) {
+    return false;
+  }
+#ifndef JSON_VALUE_USE_INTERNAL_MAP
+  CZString actualKey(key, CZString::noDuplication);
+  ObjectValues::iterator it = value_.map_->find(actualKey);
+  if (it == value_.map_->end())
+    return false;
+  *removed = it->second;
+  value_.map_->erase(it);
+  return true;
+#else
+  Value* value = value_.map_->find(key);
+  if (value) {
+    *removed = *value;
+    value_.map_.remove(key);
+    return true;
+  } else {
+    return false;
+  }
+#endif
+}
+
 Value Value::removeMember(const char* key) {
   JSON_ASSERT_MESSAGE(type_ == nullValue || type_ == objectValue,
                       "in Json::Value::removeMember(): requires objectValue");
   if (type_ == nullValue)
     return null;
-#ifndef JSON_VALUE_USE_INTERNAL_MAP
-  CZString actualKey(key, CZString::noDuplication);
-  ObjectValues::iterator it = value_.map_->find(actualKey);
-  if (it == value_.map_->end())
-    return null;
-  Value old(it->second);
-  value_.map_->erase(it);
-  return old;
-#else
-  Value* value = value_.map_->find(key);
-  if (value) {
-    Value old(*value);
-    value_.map_.remove(key);
-    return old;
-  } else {
-    return null;
-  }
-#endif
+
+  Value removed;  // null
+  removeMember(key, &removed);
+  return removed; // still null if removeMember() did nothing
 }
 
 Value Value::removeMember(const std::string& key) {
   return removeMember(key.c_str());
+}
+
+bool Value::removeIndex(ArrayIndex index, Value* removed) {
+  if (type_ != arrayValue) {
+    return false;
+  }
+#ifdef JSON_VALUE_USE_INTERNAL_MAP
+  JSON_FAIL_MESSAGE("removeIndex is not implemented for ValueInternalArray.");
+  return false;
+#else
+  CZString key(index);
+  ObjectValues::iterator it = value_.map_->find(key);
+  if (it == value_.map_->end()) {
+    return false;
+  }
+  *removed = it->second;
+  ArrayIndex oldSize = size();
+  // shift left all items left, into the place of the "removed"
+  for (ArrayIndex i = index; i < (oldSize - 1); ++i){
+    CZString key(i);
+    (*value_.map_)[key] = (*this)[i + 1];
+  }
+  // erase the last one ("leftover")
+  CZString keyLast(oldSize - 1);
+  ObjectValues::iterator itLast = value_.map_->find(keyLast);
+  value_.map_->erase(itLast);
+  return true;
+#endif
 }
 
 #ifdef JSON_USE_CPPTL

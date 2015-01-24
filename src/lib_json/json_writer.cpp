@@ -420,7 +420,6 @@ void StyledWriterMethods::writeCommentAfterValue(const Value& value) {
 }
 
 void StyledWriterMethods::writeComment(std::string text) {
-  normalizeEOL(text);
   const char* q = text.c_str();
   while (const char *p = strchr(q, '/')) {
     q = p;
@@ -438,23 +437,6 @@ void StyledWriterMethods::writeComment(std::string text) {
     writeIndent();
     write(std::string(p, q).c_str());
   }
-}
-
-void StyledWriterMethods::normalizeEOL(std::string& text) {
-  std::string::iterator current = text.begin();
-  std::string::iterator normalized = current;
-  const std::string::iterator end = text.end();
-  while (current != end) {
-    char c = *current++;
-    if (c == '\r') // mac or dos EOL
-    {
-      if (current != end && *current == '\n') // convert dos EOL
-        ++current;
-      *normalized++ = '\n';
-    } else // handle unix EOL & other char
-      *normalized++ = c;
-  }
-  text.erase(normalized, end);
 }
 
 bool StyledWriterMethods::hasCommentForValue(const Value& value) {
